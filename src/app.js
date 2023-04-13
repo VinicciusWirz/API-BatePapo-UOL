@@ -36,8 +36,17 @@ app.post("/participants", (req, res) => {
   }
     )
   .catch(() => res.sendStatus(500));
-  
 });
+
+app.get("/participants", (req, res) => {
+  db.collection("participants").find().toArray()
+  .then((answer) => {
+    const userList = [];
+    answer.forEach(user => userList.push(user.name))
+    res.send(userList)
+  })
+  .catch(() => res.sendStatus(500));
+})
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
