@@ -10,18 +10,21 @@ app.use(express.json());
 app.use(cors());
 dotenv.config();
 
-let db;
 const mongoClient = new MongoClient(process.env.DATABASE_URL);
-mongoClient
-  .connect()
-  .then(() => (db = mongoClient.db()))
-  .catch((err) => console.log(err.message));
+try{
+  await mongoClient.connect()
+  console.log("MongoDB conectado");
+} catch(err){
+  console.log(err.message);
+}
+const db = mongoClient.db()
 
 const signUpSchema = Joi.object({ name: Joi.string().required() });
+const messageSchema = Joi.object({ to: Joi.string().required(), text: Joi.string().required(), type: Joi.string().valid('message', 'private_message').required()})
 
 app.post("/participants", (req, res) => {
   const name = req.body.name;
-  const { error, value } = signUpSchema.validate(req.body);
+  const { error, value } = signUpSchema.validate({name});
   if (error) {
     return res.status(422).send(error.details);
   }
@@ -48,5 +51,23 @@ app.get("/participants", (req, res) => {
   .catch(() => res.sendStatus(500));
 })
 
+app.post("/messages", async (req, res) => {
+  const {to, text, type} = req.body;
+  const user = req.headers.user;
+  const {error, value} = messageSchema.validate({to, text, type});
+  if(error){
+    return res.status(422).send(error.details);
+  }
+  try{
+    const userExists = await db.collection("participants").findOne({name: user});
+    if(!userExists){
+      return res.sendStatus(422);
+    }
+    db.collection("messages").insertOne({from: user, to, text, type, time: dayjs().format('HH:mm:ss')});
+    return res.sendStatus(201) ;
+  } catch(err){
+    return res.sendStatus(500);
+  }
+})
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
