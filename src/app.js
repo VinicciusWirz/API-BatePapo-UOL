@@ -132,5 +132,25 @@ app.get("/messages", async (req, res) => {
   }
 });
 
+app.post("/status", async (req, res) => {
+  const user = req.headers.user;
+  try {
+    const userActive = await db
+      .collection("participants")
+      .findOne({ name: user });
+    if (!user || !userActive) return res.sendStatus(404);
+
+    const result = await db
+      .collection("participants")
+      .updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
+    if (result.matchedCount === 0) {
+      return res.status(404).send("Esse usuário não existe!");
+    }
+    res.sendStatus(200);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
