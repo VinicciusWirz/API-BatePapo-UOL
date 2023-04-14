@@ -31,13 +31,12 @@ const limitSchema = Joi.object({
 });
 
 app.post("/participants", async (req, res) => {
-  const nameReq = req.body.name;
-  const name = stripHtml(nameReq).result.trim();
+  const name = stripHtml(req.body.name).result.trim();
   const { error, value } = signUpSchema.validate({ name });
   const regex = new RegExp(`^${name}$`, "i");
-  if (error) {
-    return res.status(422).send(error.details);
-  }
+
+  if (error || !req.body.name) return res.status(422).send(error.details);
+
   try {
     const participantExist = await db
       .collection("participants")
@@ -80,9 +79,7 @@ app.post("/messages", async (req, res) => {
   const sanitizedMessage = { to, text: stripHtml(text).result, type };
   const user = stripHtml(req.headers.user).result.trim();
   const { error, value } = messageSchema.validate(sanitizedMessage);
-  if (error) {
-    return res.status(422).send(error.details);
-  }
+  if (error || !req.headers.user) return res.status(422).send(error.details);
   try {
     const userExists = await db
       .collection("participants")
@@ -134,6 +131,7 @@ app.get("/messages", async (req, res) => {
 
 app.post("/status", async (req, res) => {
   const user = stripHtml(req.headers.user).result.trim();
+  if (!user) return res.sendStatus(422);
   try {
     const userActive = await db
       .collection("participants")
@@ -160,6 +158,38 @@ app.delete("/messages/:id", async (req, res) => {
       .deleteOne({ _id: new ObjectId(id) });
     res.status(204).send("mensagem deletada com sucesso");
     if (result.deletedCount === 0) return res.sendStatus(404);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+app.put("/messages/:id", async (req, res) => {
+  const { id } = req.params;
+  const { to, text, type } = req.body;
+  const user = stripHtml(req.headers.user).result.trim();
+  const sanitizedMessage = {
+    to,
+    text: stripHtml(text).result,
+    type,
+  };
+  const messageFilter = { _id: new ObjectId(id) };
+  const { error, value } = messageSchema.validate(sanitizedMessage);
+  if (error || !req.headers.user) return res.sendStatus(422);
+  try {
+    const userExists = await db
+      .collection("participants")
+      .findOne({ name: user });
+    if (!userExists) {
+      return res.sendStatus(422);
+    }
+
+    const isUserOP = await db.collection("messages").findOne(messageFilter);
+    if (isUserOP.from !== user) return res.sendStatus(401);
+    if (!isUserOP) return res.sendStatus(404);
+    await db
+      .collection("messages")
+      .updateOne(messageFilter, { $set: { from: user, ...sanitizedMessage } });
+    res.send("OK");
   } catch (error) {
     res.status(500).send(error.message);
   }
