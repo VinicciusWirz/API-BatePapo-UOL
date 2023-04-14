@@ -31,11 +31,11 @@ const limitSchema = Joi.object({
 });
 
 app.post("/participants", async (req, res) => {
+  if (!req.body.name) return res.sendStatus(422);
   const name = stripHtml(req.body.name).result.trim();
   const { error, value } = signUpSchema.validate({ name });
+  if (error) return res.sendStatus(422);
   const regex = new RegExp(`^${name}$`, "i");
-
-  if (error || !req.body.name) return res.status(422).send(error.details);
 
   try {
     const participantExist = await db
@@ -76,10 +76,10 @@ app.get("/participants", async (req, res) => {
 
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
+  const { error, value } = messageSchema.validate({ to, text, type });
+  if (error || !req.headers.user) return res.sendStatus(422);
   const sanitizedMessage = { to, text: stripHtml(text).result, type };
   const user = stripHtml(req.headers.user).result.trim();
-  const { error, value } = messageSchema.validate(sanitizedMessage);
-  if (error || !req.headers.user) return res.status(422).send(error.details);
   try {
     const userExists = await db
       .collection("participants")
@@ -156,7 +156,7 @@ app.delete("/messages/:id", async (req, res) => {
     const result = await db
       .collection("messages")
       .deleteOne({ _id: new ObjectId(id) });
-    res.status(204).send("mensagem deletada com sucesso");
+    res.status(200).send("mensagem deletada com sucesso");
     if (result.deletedCount === 0) return res.sendStatus(404);
   } catch (error) {
     res.status(500).send(error.message);
@@ -184,12 +184,12 @@ app.put("/messages/:id", async (req, res) => {
     }
 
     const isUserOP = await db.collection("messages").findOne(messageFilter);
-    if (isUserOP.from !== user) return res.sendStatus(401);
     if (!isUserOP) return res.sendStatus(404);
+    if (isUserOP.from !== user) return res.sendStatus(401);
     await db
       .collection("messages")
       .updateOne(messageFilter, { $set: { from: user, ...sanitizedMessage } });
-    res.send("OK");
+    res.status(200).send("OK");
   } catch (error) {
     res.status(500).send(error.message);
   }
