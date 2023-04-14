@@ -4,6 +4,7 @@ import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 import Joi from "joi";
 import dayjs from "dayjs";
+import { stripHtml } from "string-strip-html";
 
 const app = express();
 app.use(express.json());
@@ -30,7 +31,8 @@ const limitSchema = Joi.object({
 });
 
 app.post("/participants", async (req, res) => {
-  const name = req.body.name;
+  const nameReq = req.body.name;
+  const name = stripHtml(nameReq).result.trim();
   const { error, value } = signUpSchema.validate({ name });
   const regex = new RegExp(`^${name}$`, "i");
   if (error) {
@@ -75,8 +77,9 @@ app.get("/participants", async (req, res) => {
 
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
-  const user = req.headers.user;
-  const { error, value } = messageSchema.validate({ to, text, type });
+  const sanitizedMessage = { to, text: stripHtml(text).result, type };
+  const user = stripHtml(req.headers.user).result.trim();
+  const { error, value } = messageSchema.validate(sanitizedMessage);
   if (error) {
     return res.status(422).send(error.details);
   }
@@ -84,15 +87,12 @@ app.post("/messages", async (req, res) => {
     const userExists = await db
       .collection("participants")
       .findOne({ name: user });
-    console.log("req.headers.user =", req.headers.user);
     if (!userExists) {
       return res.sendStatus(422);
     }
     db.collection("messages").insertOne({
       from: user,
-      to,
-      text,
-      type,
+      ...sanitizedMessage,
       time: dayjs().format("HH:mm:ss"),
     });
     return res.sendStatus(201);
@@ -133,7 +133,7 @@ app.get("/messages", async (req, res) => {
 });
 
 app.post("/status", async (req, res) => {
-  const user = req.headers.user;
+  const user = stripHtml(req.headers.user).result.trim();
   try {
     const userActive = await db
       .collection("participants")
@@ -162,17 +162,17 @@ try {
       .collection("participants")
       .find(filter)
       .toArray();
-      const result = await db.collection("participants").deleteMany(filter);
-      usersRemoved.forEach(async (user) => {
-        const messageBody = {
-          from: user.name,
-          to: "Todos",
-          text: "sai da sala...",
-          type: "status",
-          time: dayjs().format("HH:mm:ss"),
-        };
-        await db.collection("messages").insertOne(messageBody);
-      });
+    const result = await db.collection("participants").deleteMany(filter);
+    usersRemoved.forEach(async (user) => {
+      const messageBody = {
+        from: user.name,
+        to: "Todos",
+        text: "sai da sala...",
+        type: "status",
+        time: dayjs().format("HH:mm:ss"),
+      };
+      await db.collection("messages").insertOne(messageBody);
+    });
   }, activeUsersTimer);
 } catch (err) {
   res.status(500).send(err.message);
