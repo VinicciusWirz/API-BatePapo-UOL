@@ -25,17 +25,21 @@ const messageSchema = Joi.object({
   text: Joi.string().required(),
   type: Joi.string().valid("message", "private_message").required(),
 });
+const limitSchema = Joi.object({
+  limit: Joi.number().integer().optional().min(1),
+});
 
 app.post("/participants", async (req, res) => {
   const name = req.body.name;
   const { error, value } = signUpSchema.validate({ name });
+  const regex = new RegExp(`^${name}$`, "i");
   if (error) {
     return res.status(422).send(error.details);
   }
   try {
     const participantExist = await db
       .collection("participants")
-      .findOne({ name });
+      .findOne({ name: regex });
     if (participantExist) {
       return res.sendStatus(409);
     }
@@ -59,7 +63,11 @@ app.post("/participants", async (req, res) => {
 app.get("/participants", async (req, res) => {
   try {
     const participants = await db.collection("participants").find().toArray();
-    res.send(participants.map(p => {return {name: p.name}}));
+    res.send(
+      participants.map((p) => {
+        return { name: p.name };
+      })
+    );
   } catch {
     res.sendStatus(500);
   }
@@ -76,6 +84,7 @@ app.post("/messages", async (req, res) => {
     const userExists = await db
       .collection("participants")
       .findOne({ name: user });
+    console.log("req.headers.user =", req.headers.user);
     if (!userExists) {
       return res.sendStatus(422);
     }
@@ -91,5 +100,37 @@ app.post("/messages", async (req, res) => {
     return res.sendStatus(500);
   }
 });
+
+app.get("/messages", async (req, res) => {
+  const user = req.headers.user;
+  const limit = req.query.limit;
+  const { error } = limitSchema.validate({ limit });
+  if (error) {
+    return res.sendStatus(422);
+  }
+  try {
+    const messages = await db
+      .collection("messages")
+      .find({
+        $or: [
+          { type: "message" },
+          { type: "status" },
+          {
+            type: "private_message",
+            $or: [
+              { from: { $in: [user, "Todos"] } },
+              { to: { $in: [user, "Todos"] } },
+            ],
+          },
+        ],
+      })
+      .toArray();
+    const lastMessages = limit ? messages.slice(-Number(limit)) : messages;
+    res.send(lastMessages);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
