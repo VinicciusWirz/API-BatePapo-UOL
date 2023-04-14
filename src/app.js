@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import Joi from "joi";
 import dayjs from "dayjs";
@@ -147,6 +147,19 @@ app.post("/status", async (req, res) => {
       return res.status(404).send("Esse usuário não existe!");
     }
     res.sendStatus(200);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+app.delete("/messages/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db
+      .collection("messages")
+      .deleteOne({ _id: new ObjectId(id) });
+    res.status(204).send("mensagem deletada com sucesso");
+    if (result.deletedCount === 0) return res.sendStatus(404);
   } catch (error) {
     res.status(500).send(error.message);
   }
