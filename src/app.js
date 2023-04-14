@@ -43,11 +43,11 @@ app.post("/participants", async (req, res) => {
     if (participantExist) {
       return res.sendStatus(409);
     }
-    db.collection("participants").insertOne({
+    await db.collection("participants").insertOne({
       ...value,
       lastStatus: Date.now(),
     });
-    db.collection("messages").insertOne({
+    await db.collection("messages").insertOne({
       from: name,
       to: "Todos",
       text: "entra na sala...",
@@ -162,17 +162,17 @@ try {
       .collection("participants")
       .find(filter)
       .toArray();
-    usersRemoved.forEach(async (user) => {
-      const messageBody = {
-        from: user.name,
-        to: "Todos",
-        text: "sai na sala...",
-        type: "status",
-        time: dayjs().format("HH:mm:ss"),
-      };
-      await db.collection("messages").insertOne(messageBody);
-    });
-    const result = await db.collection("participants").deleteMany(filter);
+      const result = await db.collection("participants").deleteMany(filter);
+      usersRemoved.forEach(async (user) => {
+        const messageBody = {
+          from: user.name,
+          to: "Todos",
+          text: "sai na sala...",
+          type: "status",
+          time: dayjs().format("HH:mm:ss"),
+        };
+        await db.collection("messages").insertOne(messageBody);
+      });
   }, activeUsersTimer);
 } catch (err) {
   res.status(500).send(err.message);
