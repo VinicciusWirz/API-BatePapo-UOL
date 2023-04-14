@@ -152,5 +152,31 @@ app.post("/status", async (req, res) => {
   }
 });
 
+const activeUsersTimer = 15000;
+
+try {
+  setInterval(async () => {
+    const tenSecondsAgo = Date.now() - 10000;
+    const filter = { lastStatus: { $lt: tenSecondsAgo } };
+    const usersRemoved = await db
+      .collection("participants")
+      .find(filter)
+      .toArray();
+    usersRemoved.forEach(async (user) => {
+      const messageBody = {
+        from: user.name,
+        to: "Todos",
+        text: "sai na sala...",
+        type: "status",
+        time: dayjs().format("HH:mm:ss"),
+      };
+      await db.collection("messages").insertOne(messageBody);
+    });
+    const result = await db.collection("participants").deleteMany(filter);
+  }, activeUsersTimer);
+} catch (err) {
+  res.status(500).send(err.message);
+}
+
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
