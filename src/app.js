@@ -152,10 +152,10 @@ app.post("/status", async (req, res) => {
 app.delete("/messages/:id", async (req, res) => {
   const { id } = req.params;
   const user = req.headers.user;
-  if (!user) return res.sendStatus(401);
+  if (!req.headers.user) return res.sendStatus(401);
   const messageFilter = { _id: new ObjectId(id) };
   try {
-    const message = db.collection("messages").find(messageFilter);
+    const message = await db.collection("messages").findOne(messageFilter);
     if (!message) return res.sendStatus(404);
     if (message.from !== user) return res.sendStatus(401);
 
