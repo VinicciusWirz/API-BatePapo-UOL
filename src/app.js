@@ -31,10 +31,9 @@ const limitSchema = Joi.object({
 });
 
 app.post("/participants", async (req, res) => {
-  if (!req.body.name) return res.sendStatus(422);
-  const name = stripHtml(req.body.name).result.trim();
-  const { error, value } = signUpSchema.validate({ name });
+  const { error, value } = signUpSchema.validate(req.body);
   if (error) return res.sendStatus(422);
+  const name = stripHtml(req.body.name).result.trim();
   const regex = new RegExp(`^${name}$`, "i");
 
   try {
@@ -45,7 +44,7 @@ app.post("/participants", async (req, res) => {
       return res.sendStatus(409);
     }
     await db.collection("participants").insertOne({
-      ...value,
+      name,
       lastStatus: Date.now(),
     });
     await db.collection("messages").insertOne({
@@ -152,10 +151,15 @@ app.post("/status", async (req, res) => {
 
 app.delete("/messages/:id", async (req, res) => {
   const { id } = req.params;
+  const user = req.headers.user;
+  if (!user) return res.sendStatus(401);
+  const messageFilter = { _id: new ObjectId(id) };
   try {
-    const result = await db
-      .collection("messages")
-      .deleteOne({ _id: new ObjectId(id) });
+    const message = db.collection("messages").find(messageFilter);
+    if (!message) return res.sendStatus(404);
+    if (message.from !== user) return res.sendStatus(401);
+
+    const result = await db.collection("messages").deleteOne(messageFilter);
     res.status(200).send("mensagem deletada com sucesso");
     if (result.deletedCount === 0) return res.sendStatus(404);
   } catch (error) {
