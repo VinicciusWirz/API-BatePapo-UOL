@@ -2,9 +2,13 @@ import express from "express";
 import cors from "cors";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
-import Joi from "joi";
 import dayjs from "dayjs";
 import { stripHtml } from "string-strip-html";
+import {
+  limitSchema,
+  messageSchema,
+  usernameSchema,
+} from "./utils/schemaValidations.js";
 
 const app = express();
 app.use(express.json());
@@ -20,19 +24,12 @@ try {
 }
 const db = mongoClient.db();
 
-const signUpSchema = Joi.object({ name: Joi.string().required() });
-const messageSchema = Joi.object({
-  to: Joi.string().required(),
-  text: Joi.string().required(),
-  type: Joi.string().valid("message", "private_message").required(),
-});
-const limitSchema = Joi.object({
-  limit: Joi.number().integer().optional().min(1),
-});
-
 app.post("/participants", async (req, res) => {
-  const { error, value } = signUpSchema.validate(req.body);
-  if (error) return res.sendStatus(422);
+  const validation = usernameSchema.validate(req.body, { abortEarly: false });
+  if (validation.error) {
+    const errorLog = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errorLog);
+  }
   const name = stripHtml(req.body.name).result.trim();
   const regex = new RegExp(`^${name}$`, "i");
 
@@ -75,8 +72,26 @@ app.get("/participants", async (req, res) => {
 
 app.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
-  const { error, value } = messageSchema.validate({ to, text, type });
-  if (error || !req.headers.user) return res.sendStatus(422);
+  const validation = messageSchema.validate(req.body, { abortEarly: false });
+  const userValidation = usernameSchema.validate(
+    { name: req.headers.user },
+    { abortEarly: false }
+  );
+  if (validation.error || userValidation.error) {
+    let messageErrorLog = [];
+    let userErrorLog = [];
+    if (validation.error) {
+      messageErrorLog = validation.error.details.map(
+        (detail) => detail.message
+      );
+    }
+    if (userValidation.error) {
+      userErrorLog = userValidation.error.details.map(
+        (detail) => detail.message
+      );
+    }
+    return res.status(422).send([...userErrorLog, ...messageErrorLog]);
+  }
   const sanitizedMessage = { to, text: stripHtml(text).result, type };
   const user = stripHtml(req.headers.user).result.trim();
   try {
@@ -100,9 +115,10 @@ app.post("/messages", async (req, res) => {
 app.get("/messages", async (req, res) => {
   const user = req.headers.user;
   const limit = req.query.limit;
-  const { error } = limitSchema.validate({ limit });
-  if (error) {
-    return res.sendStatus(422);
+  const validation = limitSchema.validate({ limit }, { abortEarly: false });
+  if (validation.error) {
+    const errorLog = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errorLog);
   }
   try {
     const messages = await db
@@ -129,8 +145,20 @@ app.get("/messages", async (req, res) => {
 });
 
 app.post("/status", async (req, res) => {
+  if (!req.headers.user) return res.sendStatus(422);
+
   const user = stripHtml(req.headers.user).result.trim();
-  if (!user) return res.sendStatus(422);
+
+  const validation = usernameSchema.validate(
+    { name: user },
+    { abortEarly: false }
+  );
+
+  if (validation.error) {
+    const errorLog = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errorLog);
+  }
+
   try {
     const userActive = await db
       .collection("participants")
@@ -170,15 +198,35 @@ app.delete("/messages/:id", async (req, res) => {
 app.put("/messages/:id", async (req, res) => {
   const { id } = req.params;
   const { to, text, type } = req.body;
-  const user = stripHtml(req.headers.user).result.trim();
+  const messageFilter = { _id: new ObjectId(id) };
+  const validation = messageSchema.validate(req.body, {
+    abortEarly: false,
+  });
+  const userValidation = usernameSchema.validate(
+    { name: req.headers.user },
+    { abortEarly: false }
+  );
+  if (validation.error || userValidation.error) {
+    let messageErrorLog = [];
+    let userErrorLog = [];
+    if (validation.error) {
+      messageErrorLog = validation.error.details.map(
+        (detail) => detail.message
+      );
+    }
+    if (userValidation.error) {
+      userErrorLog = userValidation.error.details.map(
+        (detail) => detail.message
+      );
+    }
+    return res.status(422).send([...userErrorLog, ...messageErrorLog]);
+  }
   const sanitizedMessage = {
     to,
     text: stripHtml(text).result,
     type,
   };
-  const messageFilter = { _id: new ObjectId(id) };
-  const { error, value } = messageSchema.validate(sanitizedMessage);
-  if (error || !req.headers.user) return res.sendStatus(422);
+  const user = stripHtml(req.headers.user).result.trim();
   try {
     const userExists = await db
       .collection("participants")
@@ -187,9 +235,14 @@ app.put("/messages/:id", async (req, res) => {
       return res.sendStatus(422);
     }
 
-    const isUserOP = await db.collection("messages").findOne(messageFilter);
-    if (!isUserOP) return res.sendStatus(404);
-    if (isUserOP.from !== user) return res.sendStatus(401);
+    const messageExists = await db
+      .collection("messages")
+      .findOne(messageFilter);
+    if (!messageExists) return res.sendStatus(404);
+
+    const isMessageFromUser = messageExists.from === user;
+    if (!isMessageFromUser) return res.sendStatus(401);
+
     await db
       .collection("messages")
       .updateOne(messageFilter, { $set: { from: user, ...sanitizedMessage } });
