@@ -145,19 +145,16 @@ app.get("/messages", async (req, res) => {
 });
 
 app.post("/status", async (req, res) => {
-  if (!req.headers.user) return res.sendStatus(422);
-
-  const user = stripHtml(req.headers.user).result.trim();
-
   const validation = usernameSchema.validate(
-    { name: user },
+    { name: req.headers.user },
     { abortEarly: false }
   );
-
   if (validation.error) {
     const errorLog = validation.error.details.map((detail) => detail.message);
     return res.status(422).send(errorLog);
   }
+
+  const user = stripHtml(req.headers.user).result.trim();
 
   try {
     const userActive = await db
