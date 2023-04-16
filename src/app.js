@@ -176,8 +176,15 @@ app.post("/status", async (req, res) => {
 
 app.delete("/messages/:id", async (req, res) => {
   const { id } = req.params;
-  const user = req.headers.user;
-  if (!req.headers.user) return res.sendStatus(401);
+  const validation = usernameSchema.validate(
+    { name: req.headers.user },
+    { abortEarly: false }
+  );
+  if (validation.error) {
+    const errorLog = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errorLog);
+  }
+  const user = stripHtml(req.headers.user).result.trim();
   const messageFilter = { _id: new ObjectId(id) };
   try {
     const message = await db.collection("messages").findOne(messageFilter);
