@@ -279,7 +279,7 @@ try {
     });
   }, activeUsersTimer);
 } catch (err) {
-  res.status(500).send(err.message);
+  console.log(err.message);
 }
 
 const PORT = 5000;
